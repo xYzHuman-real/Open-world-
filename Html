@@ -1,0 +1,417 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Living 3D Open-World Metropolis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Reliable UMD Three.js r128 (Zero external addon dependencies) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #7ec0ee;
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+        }
+        #world-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 1;
+            touch-action: none;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        }
+        .pill-btn {
+            transition: all 0.15s ease;
+        }
+        .pill-btn:active {
+            transform: scale(0.95);
+        }
+        .pill-btn.active {
+            background: #fbbf24;
+            color: #0f172a;
+            font-weight: 700;
+        }
+        input[type=range].clean-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.25);
+            height: 6px;
+            border-radius: 4px;
+        }
+        input[type=range].clean-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fbbf24;
+            cursor: pointer;
+            border: 2px solid #fff;
+        }
+        .dpad-btn {
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .dpad-btn:active {
+            background: rgba(251, 191, 36, 0.9);
+            color: #0f172a;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden">
+
+    <!-- 3D Open-World WebGL Canvas -->
+    <canvas id="world-canvas"></canvas>
+
+    <!-- Diagnostic Banner (Hidden unless an error occurs) -->
+    <div id="error-banner" class="hidden fixed top-3 left-3 right-3 z-50 bg-red-600/95 text-white p-3 rounded-xl text-xs font-mono shadow-xl"></div>
+
+    <!-- Compact Top-Right Director & World Control Panel -->
+    <div id="ui-overlay" class="fixed top-3 right-3 left-3 sm:left-auto z-20 flex flex-col items-end pointer-events-none">
+        <div id="control-panel" class="glass-panel text-white rounded-2xl p-3 w-full sm:w-80 space-y-2.5 text-xs pointer-events-auto">
+            <div class="flex items-center justify-between border-b border-white/10 pb-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-base">☀️</span>
+                    <div>
+                        <h1 class="font-bold text-xs sm:text-sm tracking-tight text-white">Living 3D Metropolis</h1>
+                        <p class="text-[10px] text-slate-300" id="entity-stats">Loading 3D World...</p>
+                    </div>
+                </div>
+                <button onclick="toggleUI()" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-semibold text-amber-300">
+                    Hide UI
+                </button>
+            </div>
+
+            <!-- Sun Time of Day Presets -->
+            <div>
+                <div class="flex justify-between text-[11px] text-slate-300 mb-1">
+                    <span>Sun & Sky Time</span>
+                    <span id="time-label" class="font-semibold text-amber-300">Morning Sun</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1">
+                    <button onclick="setSunPreset('morning')" id="btn-morning" class="pill-btn active py-1.5 rounded-lg bg-white/10 text-center text-[11px]">Morning</button>
+                    <button onclick="setSunPreset('noon')" id="btn-noon" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">Noon</button>
+                    <button onclick="setSunPreset('golden')" id="btn-golden" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">Golden</button>
+                    <button onclick="setSunPreset('sunset')" id="btn-sunset" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">Sunset</button>
+                </div>
+            </div>
+
+            <!-- Sun Elevation Slider -->
+            <div>
+                <div class="flex justify-between text-[11px] text-slate-300 mb-1">
+                    <span>Sun Arc Angle</span>
+                    <span id="sun-angle-label" class="text-amber-300 font-mono">32°</span>
+                </div>
+                <input id="sun-slider" type="range" min="5" max="88" value="32" oninput="updateSunElevation(this.value)" class="clean-slider w-full">
+            </div>
+
+            <!-- Quick Camera Bookmarks -->
+            <div>
+                <div class="text-[11px] text-slate-300 mb-1">Camera Viewpoints (Tap to Fly)</div>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button onclick="setCameraView('aerial')" id="view-aerial" class="pill-btn active py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🚁 Aerial</button>
+                    <button onclick="setCameraView('cricket')" id="view-cricket" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🏏 Cricket</button>
+                    <button onclick="setCameraView('construction')" id="view-construction" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🏗️ Crane Site</button>
+                    <button onclick="setCameraView('street')" id="view-street" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🚶 Street</button>
+                    <button onclick="setCameraView('plaza')" id="view-plaza" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🌳 Park Plaza</button>
+                    <button onclick="setCameraView('stadium2')" id="view-stadium2" class="pill-btn py-1.5 rounded-lg bg-white/10 text-center text-[11px]">🏟️ PitchCam</button>
+                </div>
+            </div>
+
+            <!-- Touch & Mouse Hint -->
+            <div class="pt-1 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-300">
+                <span>👆 1-Finger: Look/Orbit • 🤏 Pinch: Zoom</span>
+                <span>🕹️ Bottom Pad: Move</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restore UI Button when hidden -->
+    <button id="show-ui-btn" onclick="toggleUI()" class="hidden fixed top-3 right-3 z-20 glass-panel text-white px-3.5 py-2 rounded-full text-xs font-semibold shadow-lg">
+        👁️ Controls
+    </button>
+
+    <!-- Bottom On-Screen Camera Movement Controls (Great for Mobile Filming) -->
+    <div id="touch-controls" class="fixed bottom-4 left-4 right-4 z-20 flex items-end justify-between pointer-events-none">
+        <!-- Left D-Pad: Dolly Forward / Backward / Strafe Left / Right -->
+        <div class="grid grid-cols-3 gap-1.5 w-32 h-32 pointer-events-auto">
+            <div></div>
+            <button data-move="forward" class="dpad-btn text-sm">▲</button>
+            <div></div>
+            <button data-move="left" class="dpad-btn text-sm">◀</button>
+            <div class="flex items-center justify-center text-[9px] text-white/60 font-semibold text-center leading-tight">CAM<br>MOVE</div>
+            <button data-move="right" class="dpad-btn text-sm">▶</button>
+            <div></div>
+            <button data-move="backward" class="dpad-btn text-sm">▼</button>
+            <div></div>
+        </div>
+
+        <!-- Right Vertical Rig: Crane Up / Crane Down / Zoom In / Zoom Out -->
+        <div class="flex flex-col space-y-1.5 pointer-events-auto">
+            <div class="flex space-x-1.5">
+                <button data-move="zoomIn" class="dpad-btn px-3 py-2.5 text-xs">🔍+</button>
+                <button data-move="up" class="dpad-btn px-3 py-2.5 text-xs">⬆️ Up</button>
+            </div>
+            <div class="flex space-x-1.5">
+                <button data-move="zoomOut" class="dpad-btn px-3 py-2.5 text-xs">🔍−</button>
+                <button data-move="down" class="dpad-btn px-3 py-2.5 text-xs">⬇️ Down</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global error trap so any issue is immediately visible
+        window.addEventListener('error', function (e) {
+            const banner = document.getElementById('error-banner');
+            if (banner) {
+                banner.classList.remove('hidden');
+                banner.textContent = 'Render Error: ' + e.message;
+            }
+        });
+
+        try {
+            // ============================================================================
+            // 1. CORE THREE.JS SCENE, RENDERER & SELF-CONTAINED MOBILE/DESKTOP CAMERA RIG
+            // ============================================================================
+            const canvas = document.getElementById('world-canvas');
+            const renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                powerPreference: 'high-performance'
+            });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x7ec0ee);
+            scene.fog = new THREE.FogExp2(0x9ad0f5, 0.0018);
+
+            const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.5, 950);
+
+            // Built-in Smooth Spherical Orbit + Free-Fly Camera Rig (No external OrbitControls needed!)
+            const camRig = {
+                target: new THREE.Vector3(0, 6, 0),
+                goalTarget: new THREE.Vector3(0, 6, 0),
+                radius: 135,
+                goalRadius: 135,
+                theta: 0.72,       // Horizontal orbit angle (radians)
+                goalTheta: 0.72,
+                phi: 1.05,         // Vertical polar angle (radians from top)
+                goalPhi: 1.05,
+                updateCamera: function () {
+                    // Smooth damping interpolation
+                    this.target.lerp(this.goalTarget, 0.12);
+                    this.radius += (this.goalRadius - this.radius) * 0.12;
+                    this.theta += (this.goalTheta - this.theta) * 0.14;
+                    this.phi += (this.goalPhi - this.phi) * 0.14;
+
+                    // Clamp vertical angle & zoom distance
+                    this.phi = Math.max(0.12, Math.min(Math.PI / 2 - 0.03, this.phi));
+                    this.goalPhi = Math.max(0.12, Math.min(Math.PI / 2 - 0.03, this.goalPhi));
+                    this.radius = Math.max(4, Math.min(360, this.radius));
+                    this.goalRadius = Math.max(4, Math.min(360, this.goalRadius));
+
+                    const sinPhiRadius = Math.sin(this.phi) * this.radius;
+                    camera.position.x = this.target.x + sinPhiRadius * Math.sin(this.theta);
+                    camera.position.y = Math.max(1.5, this.target.y + Math.cos(this.phi) * this.radius);
+                    camera.position.z = this.target.z + sinPhiRadius * Math.cos(this.theta);
+                    camera.lookAt(this.target);
+                },
+                panBy: function (forwardDelta, rightDelta, upDelta) {
+                    const forward = new THREE.Vector3(
+                        -Math.sin(this.theta),
+                        0,
+                        -Math.cos(this.theta)
+                    ).normalize();
+                    const right = new THREE.Vector3(
+                        Math.cos(this.theta),
+                        0,
+                        -Math.sin(this.theta)
+                    ).normalize();
+
+                    this.goalTarget.addScaledVector(forward, forwardDelta);
+                    this.goalTarget.addScaledVector(right, rightDelta);
+                    this.goalTarget.y = Math.max(1.0, Math.min(90, this.goalTarget.y + upDelta));
+                }
+            };
+            camRig.updateCamera();
+
+            // Pointer (Mouse + Touch) Interaction State
+            let isDragging = false;
+            let isRightPan = false;
+            let prevPointer = { x: 0, y: 0 };
+            let pinchStartDist = 0;
+            let pinchStartRadius = 135;
+
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                isRightPan = (e.button === 2 || e.shiftKey);
+                prevPointer.x = e.clientX;
+                prevPointer.y = e.clientY;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - prevPointer.x;
+                const dy = e.clientY - prevPointer.y;
+                prevPointer.x = e.clientX;
+                prevPointer.y = e.clientY;
+
+                if (isRightPan) {
+                    const panFactor = camRig.radius * 0.002;
+                    camRig.panBy(dy * panFactor, -dx * panFactor, 0);
+                } else {
+                    camRig.goalTheta -= dx * 0.007;
+                    camRig.goalPhi -= dy * 0.007;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                camRig.goalRadius += e.deltaY * 0.08;
+            }, { passive: false });
+
+            // Mobile Touch Orbit, 2-Finger Pinch Zoom & 2-Finger Pan
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    prevPointer.x = e.touches[0].clientX;
+                    prevPointer.y = e.touches[0].clientY;
+                } else if (e.touches.length === 2) {
+                    isDragging = false;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    pinchStartDist = Math.hypot(dx, dy);
+                    pinchStartRadius = camRig.goalRadius;
+                    prevPointer.x = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+                    prevPointer.y = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && isDragging) {
+                    const dx = e.touches[0].clientX - prevPointer.x;
+                    const dy = e.touches[0].clientY - prevPointer.y;
+                    prevPointer.x = e.touches[0].clientX;
+                    prevPointer.y = e.touches[0].clientY;
+
+                    camRig.goalTheta -= dx * 0.008;
+                    camRig.goalPhi -= dy * 0.008;
+                } else if (e.touches.length === 2) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const dist = Math.hypot(dx, dy);
+                    if (pinchStartDist > 10) {
+                        const scale = pinchStartDist / Math.max(20, dist);
+                        camRig.goalRadius = pinchStartRadius * scale;
+                    }
+
+                    // Two-finger midpoint pan
+                    const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+                    const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+                    const panX = midX - prevPointer.x;
+                    const panY = midY - prevPointer.y;
+                    prevPointer.x = midX;
+                    prevPointer.y = midY;
+                    const panSpeed = camRig.radius * 0.0022;
+                    camRig.panBy(panY * panSpeed, -panX * panSpeed, 0);
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', () => {
+                isDragging = false;
+            });
+
+            // On-Screen Touch D-Pad Hold Buttons
+            const activeMoves = {};
+            document.querySelectorAll('[data-move]').forEach(btn => {
+                const action = btn.getAttribute('data-move');
+                const startHold = (e) => {
+                    e.preventDefault();
+                    activeMoves[action] = true;
+                };
+                const endHold = (e) => {
+                    e.preventDefault();
+                    activeMoves[action] = false;
+                };
+                btn.addEventListener('mousedown', startHold);
+                btn.addEventListener('mouseup', endHold);
+                btn.addEventListener('mouseleave', endHold);
+                btn.addEventListener('touchstart', startHold, { passive: false });
+                btn.addEventListener('touchend', endHold, { passive: false });
+                btn.addEventListener('touchcancel', endHold, { passive: false });
+            });
+
+            // ============================================================================
+            // 2. SKY DOME, VISIBLE 3D SUN WITH HALO & DIRECTIONAL SHADOW LIGHT
+            // ============================================================================
+            const hemiLight = new THREE.HemisphereLight(0xdff0ff, 0x4b5563, 0.7);
+            scene.add(hemiLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.4);
+            sunLight.position.set(160, 110, 130);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1024;
+            sunLight.shadow.mapSize.height = 1024;
+            const shadowCamSize = 155;
+            sunLight.shadow.camera.left = -shadowCamSize;
+            sunLight.shadow.camera.right = shadowCamSize;
+            sunLight.shadow.camera.top = shadowCamSize;
+            sunLight.shadow.camera.bottom = -shadowCamSize;
+            sunLight.shadow.camera.near = 10;
+            sunLight.shadow.camera.far = 450;
+            sunLight.shadow.bias = -0.0008;
+            scene.add(sunLight);
+
+            // Visible 3D Sun Sphere + Atmospheric Corona Glow Rings
+            const sunAssembly = new THREE.Group();
+            const sunCoreMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(14, 24, 24),
+                new THREE.MeshBasicMaterial({ color: 0xfffbeb, fog: false })
+            );
+            sunAssembly.add(sunCoreMesh);
+
+            const sunHaloMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(22, 24, 24),
+                new T
